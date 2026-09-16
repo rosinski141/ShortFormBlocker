@@ -51,8 +51,11 @@ Back and Home still work.
 
 ## Install it (no build required)
 
-Grab `shortformblocker.apk` from the [latest release](../../releases/latest) on the phone itself,
-open it, and let the browser install an app from an unknown source when Android asks. Android 8+
+Grab `shortformblocker.apk` from the [latest release](../../releases/latest) on the phone itself -
+the direct link, the one worth sending to someone, is
+<https://github.com/rosinski141/ShortFormBlocker/releases/latest/download/shortformblocker.apk> and
+it always points at the newest version. Open it, and let the browser install an app from an unknown
+source when Android asks. Android 8+
 asks per app, so the switch you are granting is "allow Chrome to install apps", which you can turn
 straight back off afterwards.
 
