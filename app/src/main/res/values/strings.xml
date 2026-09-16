@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">ShortFormBlocker</string>
+    <string name="accessibility_service_label">ShortFormBlocker</string>
+    <string name="accessibility_service_summary">Closes short-form video feeds as they open</string>
+    <string name="accessibility_service_description">ShortFormBlocker watches the screens of the apps you chose (YouTube, Instagram, TikTok, browsers and so on) so it can tell when a Shorts or Reels feed opens, and immediately navigates away from it. Screen content is read on the device only: nothing is stored and nothing is sent anywhere.</string>
+    <string name="fgs_special_use_reason">Keeps short-form blocking alive and warns when it stops working</string>
+</resources>
