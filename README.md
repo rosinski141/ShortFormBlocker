@@ -118,9 +118,25 @@ adb shell pm uninstall --user 0 com.mati.shortformblocker
 Then, on the phone:
 
 1. Open the app and tap **Open accessibility settings**, find ShortFormBlocker, switch it on.
-2. Allow notifications and exclude the app from battery optimisation (both offered on the setup card).
-3. On Xiaomi / Samsung / OnePlus and similar, also allow **autostart** in the system settings, or the
+2. **If the switch is greyed out, or turning it on is refused with "App was denied access" /
+   "Controlled by restricted setting"** - see below. It is not a fault in the app and it has nothing
+   to do with what the app does.
+3. Allow notifications and exclude the app from battery optimisation (both offered on the setup card).
+4. On Xiaomi / Samsung / OnePlus and similar, also allow **autostart** in the system settings, or the
    OEM battery manager will eventually kill the watchdog.
+
+### "App was denied access"
+
+Android 13 and later refuse accessibility access to any app installed outside an app store, and say
+so in a way that sounds like a verdict on the app. The unlock is hidden in an overflow menu:
+
+**Settings -> Apps -> ShortFormBlocker -> the three dots, top right -> Allow restricted settings**
+
+Then go back to Accessibility and switch the service on. The setup card in the app shows this text
+with an **Open App info** button that goes straight there, whenever the app was not installed from
+the Play Store. Note that `adb install` does not trip the restriction and opening a downloaded APK
+does, which is why it never appears while developing and always appears for someone installing from
+the releases page.
 
 Nothing you do in the app leaves the phone - see [Privacy](#privacy).
 

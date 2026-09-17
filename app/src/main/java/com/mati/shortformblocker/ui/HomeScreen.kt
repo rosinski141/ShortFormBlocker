@@ -42,9 +42,11 @@ fun HomeScreen(
     settings: BlockerSettings,
     stats: BlockStats,
     serviceEnabled: Boolean,
+    restrictedSettingsMayApply: Boolean,
     feedStates: Map<String, FeedVisitState>,
     now: Long,
     onEnableService: () -> Unit,
+    onOpenAppInfo: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onOpenBatterySettings: () -> Unit,
     onSetProtection: (Boolean) -> Unit,
@@ -71,7 +73,9 @@ fun HomeScreen(
 
             if (!serviceEnabled) {
                 SetupCard(
+                    restrictedSettingsMayApply = restrictedSettingsMayApply,
                     onEnableService = onEnableService,
+                    onOpenAppInfo = onOpenAppInfo,
                     onRequestNotificationPermission = onRequestNotificationPermission,
                     onOpenBatterySettings = onOpenBatterySettings,
                 )

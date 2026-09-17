@@ -25,6 +25,7 @@ import com.mati.shortformblocker.data.PendingDisable
 import com.mati.shortformblocker.detect.FeedBudgetHolder
 import com.mati.shortformblocker.service.AccessibilityUtils
 import com.mati.shortformblocker.service.ProtectionService
+import com.mati.shortformblocker.service.RestrictedSettings
 import com.mati.shortformblocker.ui.theme.BlockerTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -65,6 +66,8 @@ private fun BlockerRoot(onRequestNotificationPermission: () -> Unit) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var serviceEnabled by remember { mutableStateOf(AccessibilityUtils.isServiceEnabled(context)) }
     var screen by remember { mutableStateOf(Screen.HOME) }
+    // Where the app was installed from cannot change while it runs, so this is read once.
+    val restrictedSettingsMayApply = remember(context) { RestrictedSettings.mayApply(context) }
 
     // One ticker drives the cooldown countdown, the "is the service still on?" check, and landing
     // a pending disable the moment it comes due even if the watchdog has been killed.
@@ -92,9 +95,11 @@ private fun BlockerRoot(onRequestNotificationPermission: () -> Unit) {
             settings = settings,
             stats = stats,
             serviceEnabled = serviceEnabled,
+            restrictedSettingsMayApply = restrictedSettingsMayApply,
             feedStates = feedStates,
             now = now,
             onEnableService = { AccessibilityUtils.openAccessibilitySettings(context) },
+            onOpenAppInfo = { RestrictedSettings.openAppInfo(context) },
             onRequestNotificationPermission = onRequestNotificationPermission,
             onOpenBatterySettings = {
                 runCatching {

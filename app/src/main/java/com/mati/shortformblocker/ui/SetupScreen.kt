@@ -21,7 +21,9 @@ import androidx.compose.ui.unit.dp
  */
 @Composable
 fun SetupCard(
+    restrictedSettingsMayApply: Boolean,
     onEnableService: () -> Unit,
+    onOpenAppInfo: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onOpenBatterySettings: () -> Unit,
 ) {
@@ -45,6 +47,19 @@ fun SetupCard(
             )
             Button(onClick = onEnableService, modifier = Modifier.fillMaxWidth()) {
                 Text("Open accessibility settings")
+            }
+            if (restrictedSettingsMayApply) {
+                Text(
+                    text = "Greyed out, or refused with \"App was denied access\"? Android does " +
+                        "that to every app installed from a browser rather than from a store. " +
+                        "Open App info, tap the three dots at the top right, choose \"Allow " +
+                        "restricted settings\", then switch the service on again.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                TextButton(onClick = onOpenAppInfo) {
+                    Text("Open App info")
+                }
             }
             Text(
                 text = "Then, so Android does not quietly kill it:",
