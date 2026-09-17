@@ -17,6 +17,18 @@ val keystoreProperties = Properties().apply {
 val hasReleaseKeystore = keystoreProperties.getProperty("storeFile")
     ?.let { rootProject.file(it).exists() } == true
 
+/**
+ * The version comes from the release workflow (`-PversionName=1.2 -PversionCode=5`), so the tag,
+ * the APK and what the app reports about itself cannot drift apart - and versionCode, which Android
+ * requires to increase for every update, is never a number anyone has to remember to bump.
+ *
+ * A local build falls back to something deliberately *below* anything published: a release APK you
+ * built yourself should not be able to install over one from the releases page and pass itself off
+ * as an update. Pass the two properties when you do want that.
+ */
+val appVersionName = (findProperty("versionName") as String?) ?: "dev"
+val appVersionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
+
 android {
     namespace = "com.mati.shortformblocker"
     compileSdk = 37
@@ -25,8 +37,8 @@ android {
         applicationId = "com.mati.shortformblocker"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = appVersionCode
+        versionName = appVersionName
     }
 
     signingConfigs {

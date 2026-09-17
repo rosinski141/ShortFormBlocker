@@ -1,0 +1,9 @@
+# Keep LF in the repository. gradlew is a shell script and CRLF makes it unrunnable on the CI
+# runner, which is the kind of failure that only shows up once a release is already tagged.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.jks binary
+*.keystore binary
+*.apk binary

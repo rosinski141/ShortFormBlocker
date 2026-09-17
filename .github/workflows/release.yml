@@ -1,0 +1,122 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, e.g. 1.2'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history: versionCode is the commit count, and a shallow clone would make every
+          # release versionCode 1 - Android then refuses to install it over an older build.
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Work out the version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            NAME="${{ github.event.inputs.version }}"
+          else
+            NAME="${GITHUB_REF_NAME#v}"
+          fi
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          # On a manual run github.ref_name is the branch, so the release would be tagged "main".
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=v$NAME" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          fi
+          # versionCode must increase for every update or Android rejects the install. The commit
+          # count is monotonic and needs no bookkeeping. v1.0 and v1.1 were hand-built as 1 and 2,
+          # and the count is already past those.
+          echo "code=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 is not set. The release build would silently fall back"
+            echo "::error::to the debug key, and a debug-signed APK cannot install over any build"
+            echo "::error::already on someone's phone."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > release-keystore.jks
+          cat > keystore.properties <<EOF
+          storeFile=release-keystore.jks
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+      - name: Test and build the signed release
+        run: |
+          ./gradlew :app:testDebugUnitTest :app:assembleRelease \
+            -PversionName=${{ steps.version.outputs.name }} \
+            -PversionCode=${{ steps.version.outputs.code }}
+
+      - name: Check it was signed with the right key
+        env:
+          # Public fingerprint of the release certificate, not a secret. Every published APK must
+          # carry it: an update signed by anything else cannot install over the ones already out
+          # there, and the only fix on the far end is for everyone to uninstall first.
+          EXPECTED: 244001ceea218c2b3804de619edd9a87ecfae120b969ab2fe2c0300f73ff358a
+        run: |
+          APKSIGNER=$(ls -1 "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "::warning::apksigner not found on the runner; skipping the certificate check."
+            exit 0
+          fi
+          ACTUAL=$("$APKSIGNER" verify --print-certs app/build/outputs/apk/release/app-release.apk \
+            | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          echo "signed by: $ACTUAL"
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Signed with $ACTUAL, expected $EXPECTED."
+            exit 1
+          fi
+
+      - name: Name the APK
+        # The stable name matters: the README hands out
+        # releases/latest/download/shortformblocker.apk as the link to send people, and that link
+        # only resolves while every release keeps calling its asset the same thing.
+        run: mv app/build/outputs/apk/release/app-release.apk shortformblocker.apk
+
+      - name: Remove the signing material from the runner
+        if: always()
+        run: rm -f release-keystore.jks keystore.properties
+
+      - name: Publish the release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ShortFormBlocker ${{ steps.version.outputs.name }}
+          files: shortformblocker.apk
+          generate_release_notes: true
+          body: |
+            ## Install
+
+            1. Download **shortformblocker.apk** below on the phone you want to block, and open it.
+            2. Android will ask whether to allow your browser to install apps - allow it. You can turn that back off afterwards.
+            3. Play Protect will say it cannot scan the app, because it is signed with a personal key rather than by Google. **Install anyway**.
+            4. Open the app and tap **Open accessibility settings**, then switch ShortFormBlocker on.
+            5. If that switch is greyed out or refused with **"App was denied access"**, Android is blocking it because the app came from a browser. Go to **App info -> the three dots, top right -> Allow restricted settings**, then switch it on again. The setup card in the app has a button straight to that page.
+
+            Installing this over an older version keeps your settings and counters.

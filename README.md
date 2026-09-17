@@ -162,8 +162,35 @@ keystore it points at are present, and falls back to the debug key when they are
 gitignored, so a fresh clone builds a debug-signed release APK: good enough to run yourself, not
 something to hand to anyone else.
 
-The releases on this repository are built from the tagged commit and signed with that key, which is
-why an update installs over an older version instead of asking you to uninstall it first.
+A local build is version `dev` / versionCode 1 on purpose, so it cannot install over a published
+release and be mistaken for one. Pass `-PversionName=1.2 -PversionCode=5` when you want it to.
+
+## Releasing
+
+Push a tag and [`release.yml`](.github/workflows/release.yml) does the rest: it runs the tests,
+builds a release APK signed with the release key restored from repository secrets, checks the
+signing certificate is the expected one, and publishes it as `shortformblocker.apk` on a GitHub
+release.
+
+```bash
+git tag v1.2 && git push origin v1.2
+```
+
+Three things the workflow exists to get right, all of them ways a release can be broken in a way
+that is only discoverable on someone else's phone:
+
+- **versionCode comes from `git rev-list --count HEAD`**, not from a number in `build.gradle.kts`.
+  Android refuses an update whose versionCode did not increase, and a number that has to be
+  remembered eventually is not.
+- **A missing keystore secret fails the build** rather than falling back to the debug key the way a
+  local build does. A debug-signed "release" installs fine on a clean phone and cannot install over
+  anything already out there.
+- **The asset is always named `shortformblocker.apk`**, because the direct link above resolves by
+  file name and silently 404s the moment a release calls it something else.
+
+The secrets it needs are `KEYSTORE_BASE64` (the keystore, base64-encoded), `KEYSTORE_PASSWORD`,
+`KEY_ALIAS` and `KEY_PASSWORD`. [`ci.yml`](.github/workflows/ci.yml) runs the tests and a debug
+build on every push, without any of them, so the build stays green for a clone that has no key.
 
 ## Turning it off
 
