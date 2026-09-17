@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A debug build sits next to the release one on the same phone, so both turn up in the
+  accessibility list. Naming them apart is what stops you switching on the wrong one and
+  wondering why your changes have no effect.
+-->
+<resources>
+    <string name="app_name">ShortFormBlocker (debug)</string>
+    <string name="accessibility_service_label">ShortFormBlocker (debug)</string>
+</resources>

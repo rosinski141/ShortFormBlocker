@@ -42,6 +42,12 @@ android {
 
     buildTypes {
         debug {
+            // A development build installs alongside the release one rather than colliding with
+            // it. Without this both carry the applicationId `com.mati.shortformblocker` but are
+            // signed with different keys - the debug key here, the release key in the published
+            // APK - and Android refuses the second install with "App not installed as package
+            // conflicts with an existing package", with no hint that signing is what it means.
+            applicationIdSuffix = ".debug"
             isMinifyEnabled = false
         }
         release {

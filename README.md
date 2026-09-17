@@ -103,6 +103,18 @@ straight back off afterwards.
 The APK is signed with a personal key, not by Google, so Play Protect will warn that it cannot scan
 it - "Install anyway" is the button. The source of everything it does is in this repository.
 
+If the install fails with **"App not installed as package conflicts with an existing package"**, a
+copy of `com.mati.shortformblocker` signed with a different key is already on the phone - almost
+always a `./gradlew assembleDebug` build installed over adb before the debug build had its own
+applicationId. Uninstall that one and install the release APK again; its settings and counters do
+not carry over. If uninstalling appears to succeed but the error repeats, the package is still
+present for another user or a cloned-app profile:
+
+```bash
+adb shell pm list packages -u | grep shortformblocker   # includes uninstalled-but-retained ones
+adb shell pm uninstall --user 0 com.mati.shortformblocker
+```
+
 Then, on the phone:
 
 1. Open the app and tap **Open accessibility settings**, find ShortFormBlocker, switch it on.
@@ -121,8 +133,13 @@ downloads everything else.
 ./gradlew :app:testDebugUnitTest      # 87 detection, feed-budget, DM-pass and cooldown tests, no device
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb shell am start -n com.mati.shortformblocker/.ui.MainActivity
+adb shell am start -n com.mati.shortformblocker.debug/com.mati.shortformblocker.ui.MainActivity
 ```
+
+The debug build carries the applicationId `com.mati.shortformblocker.debug` and shows up as
+**ShortFormBlocker (debug)**, so it installs next to a release build instead of colliding with it -
+the two are signed with different keys, and Android reports that as *"App not installed as package
+conflicts with an existing package"* rather than as a signing mismatch.
 
 `./gradlew :app:assembleRelease` signs with the release key when `keystore.properties` and the
 keystore it points at are present, and falls back to the debug key when they are not. Both are
@@ -161,7 +178,7 @@ Ground truth for view ids, with the phone connected:
 adb shell uiautomator dump /sdcard/win.xml && adb pull /sdcard/win.xml
 adb logcat -s ShortFormBlocker
 # logcat drops lines on some OEM builds - the stored counters never lie:
-adb shell run-as com.mati.shortformblocker cat files/datastore/blocker.preferences_pb | strings
+adb shell run-as com.mati.shortformblocker.debug cat files/datastore/blocker.preferences_pb | strings
 ```
 
 ## Known limits
