@@ -9,6 +9,7 @@ import com.mati.shortformblocker.BlockerApp
 import com.mati.shortformblocker.data.BlockerSettings
 import com.mati.shortformblocker.detect.BlockMode
 import com.mati.shortformblocker.detect.BlockRule
+import com.mati.shortformblocker.detect.FeedBudgetHolder
 import com.mati.shortformblocker.detect.FeedBudgetPolicy
 import com.mati.shortformblocker.detect.InstagramSurfaces
 import com.mati.shortformblocker.detect.ReelAllowancePolicy
@@ -88,6 +89,9 @@ class BlockerAccessibilityService : AccessibilityService() {
             onBlockStarted = ::recordBlock,
             onRecheckNeeded = ::evaluate,
             blockCountProvider = { todayBlockCount },
+            feedResetMinutesProvider = {
+                settings.feedBudgetAt(System.currentTimeMillis()).resetMinutes
+            },
         )
         applyServiceInfo()
 
@@ -203,6 +207,7 @@ class BlockerAccessibilityService : AccessibilityService() {
                 "($reportedScrolls measured, $unreportedScrolls estimated), " +
                 "feed budget: ${feedPolicy.describe(snapshot.packageName)}",
         )
+        FeedBudgetHolder.record(feedPolicy.states())
         if (effectiveMatch == null) {
             previousScreen = snapshot
             clearedScreens++
@@ -259,6 +264,9 @@ class BlockerAccessibilityService : AccessibilityService() {
         if (::enforcer.isInitialized) enforcer.shutdown()
         reelPolicy.reset()
         if (::feedPolicy.isInitialized) feedPolicy.reset()
+        // Unlike the snapshot below, this one has to go: it is a countdown against a budget that
+        // has just been forgotten, so leaving it up would lock the user out of a feed that is open.
+        FeedBudgetHolder.clear()
         // The last snapshot is deliberately kept: OEM builds rebind this service constantly, and
         // wiping it here is what made the debug screen useless exactly when it was needed.
         scope.cancel()

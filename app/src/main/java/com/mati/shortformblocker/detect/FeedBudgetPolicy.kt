@@ -1,13 +1,42 @@
 package com.mati.shortformblocker.detect
 
 /**
+ * What a feed visit looks like from the outside, so the UI can show a lockout countdown.
+ *
+ * Absolute timestamps rather than durations: the reader is a once-a-second recomposition, not
+ * something that has been counting, and [refillsAt] stays right however late it is read.
+ */
+data class FeedVisitState(
+    val packageName: String,
+    val screensScrolled: Double,
+    val screensAllowed: Int,
+    /** The budget for this visit has been scrolled through. */
+    val spent: Boolean,
+    /**
+     * When a fresh budget is earned: the reset window measured from the last scroll of the feed.
+     * It keeps running while you are in the app doing something else, and only scrolling the feed
+     * again pushes it back.
+     */
+    val refillsAt: Long,
+) {
+    fun refillRemainingMillis(now: Long): Long = (refillsAt - now).coerceAtLeast(0L)
+
+    /** Past its reset window, so the next screen of this app starts a fresh visit. */
+    fun isStale(now: Long): Boolean = now >= refillsAt
+
+    /** Locked out right now: the budget is gone and the visit has not timed out yet. */
+    fun isLockedOut(now: Long): Boolean = spent && !isStale(now)
+}
+
+/**
  * "The first screen of the feed is fine. The fortieth is the one you regret."
  *
  * A home feed cannot be blocked the way a Reels tab can: it is the front door of the app, and
  * throwing someone out of it takes their messages, events and notifications with it. So the feed is
  * not blocked for *being* the feed, it is blocked for *going on too long* - you get a budget of
- * screens per visit, and when it runs out the feed closes until you have been out of the app for a
- * while. Coming back from the launcher five seconds later does not buy a new budget.
+ * screens per visit, and when it runs out the feed closes until you have left the feed alone for a
+ * while. Coming back from the launcher five seconds later does not buy a new budget, but reading
+ * your messages in the same app does not hold the refill up either.
  *
  * Two things this has to survive, both seen on the real apps:
  *
@@ -38,7 +67,15 @@ class FeedBudgetPolicy(
         var inFeed = false
 
         var scrolledPx = 0L
-        var lastSeenAt = 0L
+
+        /**
+         * When the feed was last *scrolled*. The reset window runs from here rather than from the
+         * last screen of the app: measuring it from the app meant that answering a DM at minute
+         * nineteen pushed the refill back another twenty, so anyone who checks their messages often
+         * enough never got the feed back at all. What is rationed is feed scrolling, so that is
+         * what the wait is measured from.
+         */
+        var lastScrolledAt = 0L
 
         /**
          * When the budget was last spent *on a scroll*. Blocking keys off this rather than a flag,
@@ -50,6 +87,7 @@ class FeedBudgetPolicy(
         fun clear() {
             inFeed = false
             scrolledPx = 0L
+            lastScrolledAt = 0L
             armedAt = 0L
         }
     }
@@ -63,8 +101,7 @@ class FeedBudgetPolicy(
     fun onSnapshot(snapshot: ScreenSnapshot, isFeedScreen: Boolean): Boolean {
         val now = clock()
         val visit = visits.getOrPut(snapshot.packageName) { Visit() }
-        if (visit.lastSeenAt != 0L && now - visit.lastSeenAt > resetAfterMs()) visit.clear()
-        visit.lastSeenAt = now
+        if (visit.lastScrolledAt != 0L && now - visit.lastScrolledAt > resetAfterMs()) visit.clear()
 
         if (isFeedScreen) {
             visit.inFeed = true
@@ -80,17 +117,37 @@ class FeedBudgetPolicy(
     fun onScroll(packageName: String, distancePx: Int) {
         val visit = visits[packageName] ?: return
         if (!visit.inFeed) return
+        val now = clock()
         visit.scrolledPx += distancePx
-        if (visit.scrolledPx >= budgetPx()) visit.armedAt = clock()
+        visit.lastScrolledAt = now
+        if (visit.scrolledPx >= budgetPx()) visit.armedAt = now
     }
 
     fun reset() = visits.clear()
 
+    /**
+     * A read-only view of the visits in progress, for the home screen's lockout countdown. Handed
+     * out as a copy: this map is mutated from accessibility callbacks and read from the UI.
+     */
+    fun states(): Map<String, FeedVisitState> {
+        val allowed = budget().screens
+        val resetAfter = resetAfterMs()
+        val spentAt = budgetPx()
+        return visits.mapValues { (packageName, visit) ->
+            FeedVisitState(
+                packageName = packageName,
+                screensScrolled = screensScrolled(visit),
+                screensAllowed = allowed,
+                spent = visit.scrolledPx >= spentAt,
+                refillsAt = visit.lastScrolledAt + resetAfter,
+            )
+        }
+    }
+
     /** One line for the block evidence, so an unexpected block can be explained afterwards. */
     fun describe(packageName: String): String {
         val visit = visits[packageName] ?: return "no feed visit recorded"
-        val screens = visit.scrolledPx.toDouble() / screenHeightPx.coerceAtLeast(1)
-        val spent = String.format("%.1f", screens)
+        val spent = String.format("%.1f", screensScrolled(visit))
         return "${spent} of ${budget().screens} screens scrolled this visit" +
             (if (visit.scrolledPx >= budgetPx()) ", budget spent" else "") +
             (if (isArmed(visit, clock())) ", scrolling on" else "") +
@@ -113,6 +170,9 @@ class FeedBudgetPolicy(
     /** Over budget and scrolling right now, rather than merely over budget. */
     private fun isArmed(visit: Visit, now: Long): Boolean =
         visit.armedAt != 0L && now - visit.armedAt <= ARM_WINDOW_MS
+
+    private fun screensScrolled(visit: Visit): Double =
+        visit.scrolledPx.toDouble() / screenHeightPx.coerceAtLeast(1)
 
     private fun budgetPx(): Long = screenHeightPx.toLong() * budget().screens
 

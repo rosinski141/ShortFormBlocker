@@ -57,9 +57,19 @@ blocked the way a Reels tab can: the feed is the front door of the app, and clos
 messages, events and notifications with it. So those two rules are **budgeted**
 ([`FeedBudgetPolicy.kt`](app/src/main/java/com/mati/shortformblocker/detect/FeedBudgetPolicy.kt)):
 you get about a dozen screens of feed per visit, measured in real pixels from the scroll events, and
-when it runs out the feed closes until you have been out of the app for fifteen minutes. Both
+when it runs out the feed closes until you have left the feed alone for fifteen minutes. Both
 numbers are in the app, under **Feed budget** - tightening them applies as you tap, loosening them
-waits out the same cooldown as switching a rule off.
+waits out the same cooldown as switching a rule off. The same card shows where each feed stands
+right now - full budget, part spent, or closed with the refill counting down - read live off the
+accessibility service through
+[`FeedBudgetHolder.kt`](app/src/main/java/com/mati/shortformblocker/detect/FeedBudgetHolder.kt),
+since a per-visit budget is not a setting and never reaches disk.
+
+The wait is measured from your last **scroll of the feed**, not from the last time the app was on
+screen. That distinction is the whole difference between a rule you can live with and one you cannot:
+measuring it from the app meant answering a DM at minute fourteen pushed the refill back another
+fifteen minutes, so anyone who checks their messages often enough never got the feed back at all.
+Using the rest of the app now costs you nothing; scrolling the feed again is what restarts the wait.
 
 Three details, each of them something the phone taught us rather than the other way round:
 
@@ -108,7 +118,7 @@ Needs JDK 17+ and the Android SDK (platform 37). No Android Studio required; the
 downloads everything else.
 
 ```bash
-./gradlew :app:testDebugUnitTest      # 79 detection, feed-budget, DM-pass and cooldown tests, no device
+./gradlew :app:testDebugUnitTest      # 87 detection, feed-budget, DM-pass and cooldown tests, no device
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.mati.shortformblocker/.ui.MainActivity

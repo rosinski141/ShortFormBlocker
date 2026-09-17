@@ -30,15 +30,19 @@ import androidx.compose.ui.unit.dp
 import com.mati.shortformblocker.data.BlockStats
 import com.mati.shortformblocker.data.BlockerSettings
 import com.mati.shortformblocker.data.PendingDisable
+import com.mati.shortformblocker.detect.BlockMode
 import com.mati.shortformblocker.detect.BlockRule
 import com.mati.shortformblocker.detect.FeedBudget
+import com.mati.shortformblocker.detect.FeedVisitState
 import com.mati.shortformblocker.detect.RuleCatalog
+import com.mati.shortformblocker.detect.feedStateFor
 
 @Composable
 fun HomeScreen(
     settings: BlockerSettings,
     stats: BlockStats,
     serviceEnabled: Boolean,
+    feedStates: Map<String, FeedVisitState>,
     now: Long,
     onEnableService: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
@@ -102,6 +106,7 @@ fun HomeScreen(
 
             FeedBudgetCard(
                 settings = settings,
+                feedStates = feedStates,
                 now = now,
                 onSetFeedBudget = onSetFeedBudget,
                 onCancelPending = onCancelPendingFeedBudget,
@@ -230,6 +235,7 @@ private fun StatColumn(value: Int, label: String) {
 @Composable
 private fun FeedBudgetCard(
     settings: BlockerSettings,
+    feedStates: Map<String, FeedVisitState>,
     now: Long,
     onSetFeedBudget: (FeedBudget) -> Unit,
     onCancelPending: () -> Unit,
@@ -262,6 +268,12 @@ private fun FeedBudgetCard(
                 onLess = { onSetFeedBudget(budget.copy(resetMinutes = budget.resetMinutes - 5)) },
                 onMore = { onSetFeedBudget(budget.copy(resetMinutes = budget.resetMinutes + 5)) },
             )
+            FeedLockoutSection(
+                settings = settings,
+                feedStates = feedStates,
+                now = now,
+            )
+
             if (pending != null) {
                 Text(
                     text = "Waiting: ${pending.budget.screens} screens, refills after " +
@@ -276,6 +288,89 @@ private fun FeedBudgetCard(
                     onPrimary = false,
                 )
             }
+        }
+    }
+}
+
+/** One feed's row: the rule, whether it is being enforced, and the visit if there is one. */
+private data class FeedLockoutLine(
+    val rule: BlockRule,
+    val enabled: Boolean,
+    val state: FeedVisitState?,
+)
+
+/**
+ * Where each budgeted feed stands right now: full, part spent, or closed with a countdown.
+ *
+ * The countdown answers the one question the block card cannot: "how long until I can read the feed
+ * again?" It runs from the last scroll of the feed, so it keeps ticking while you are in the app
+ * answering a message - the small print says so, because a timer whose rules you cannot see is one
+ * you end up testing by opening the app to check.
+ */
+@Composable
+private fun FeedLockoutSection(
+    settings: BlockerSettings,
+    feedStates: Map<String, FeedVisitState>,
+    now: Long,
+) {
+    val protectionOn = settings.isProtectionOn(now)
+    val lines = RuleCatalog.ALL
+        .filter { it.mode == BlockMode.BUDGETED_FEED }
+        .map { rule ->
+            val enabled = protectionOn && settings.isRuleOn(rule.id, now)
+            FeedLockoutLine(
+                rule = rule,
+                enabled = enabled,
+                state = feedStates.feedStateFor(rule.packages).takeIf { enabled },
+            )
+        }
+    if (lines.isEmpty()) return
+
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        lines.forEach { (rule, enabled, state) ->
+            val lockedOut = state != null && state.isLockedOut(now)
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = rule.displayName,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    text = when {
+                        !enabled -> "not blocking"
+                        state == null || state.isStale(now) -> "full budget"
+                        lockedOut -> "closed"
+                        else -> "%.1f of %d screens".format(
+                            state.screensScrolled,
+                            state.screensAllowed,
+                        )
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (lockedOut) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (lockedOut) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+            if (lockedOut) {
+                Text(
+                    text = "Refills in ${formatCountdown(state.refillRemainingMillis(now))}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+        if (lines.any { it.state != null && it.state.isLockedOut(now) }) {
+            Text(
+                text = "Counted from your last scroll of the feed, so reading your messages " +
+                    "does not hold it up. Scrolling the feed again starts the wait over.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

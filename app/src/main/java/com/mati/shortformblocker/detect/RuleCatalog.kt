@@ -136,8 +136,9 @@ object RuleCatalog {
         id = "facebook_feed",
         displayName = "Facebook feed",
         description = "Read the feed, but not endlessly: once the scroll budget for this visit is " +
-            "spent the feed closes until you have been out of Facebook for a while. Messages, " +
-            "notifications and everything else keep working.",
+            "spent the feed closes until you have left the feed alone for a while. Messages, " +
+            "notifications and everything else keep working, and using them does not hold up " +
+            "the refill.",
         packages = FacebookSurfaces.PACKAGES,
         mode = BlockMode.BUDGETED_FEED,
         // Not visibleSignalsOnly, unlike the reels rules: Facebook hides the bottom nav the moment
@@ -150,8 +151,8 @@ object RuleCatalog {
         id = "instagram_feed",
         displayName = "Instagram feed",
         description = "Read the feed, but not endlessly: once the scroll budget for this visit is " +
-            "spent the feed closes until you have been out of Instagram for a while. DMs keep " +
-            "working.",
+            "spent the feed closes until you have left the feed alone for a while. DMs keep " +
+            "working, and reading them does not hold up the refill.",
         packages = InstagramSurfaces.PACKAGES,
         mode = BlockMode.BUDGETED_FEED,
         selectedLabelContains = listOf(InstagramSurfaces.HOME_TAB_LABEL),

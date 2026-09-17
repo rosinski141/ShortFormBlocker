@@ -22,6 +22,7 @@ import com.mati.shortformblocker.BlockerApp
 import com.mati.shortformblocker.data.BlockStats
 import com.mati.shortformblocker.data.BlockerSettings
 import com.mati.shortformblocker.data.PendingDisable
+import com.mati.shortformblocker.detect.FeedBudgetHolder
 import com.mati.shortformblocker.service.AccessibilityUtils
 import com.mati.shortformblocker.service.ProtectionService
 import com.mati.shortformblocker.ui.theme.BlockerTheme
@@ -74,6 +75,10 @@ private fun BlockerRoot(onRequestNotificationPermission: () -> Unit) {
             delay(1_000)
         }
     }
+    // The feed budget lives in the accessibility service, not in DataStore - it is per visit, not
+    // per setting - so it is read off the holder on the same tick that drives the countdowns.
+    val feedStates = remember(now) { FeedBudgetHolder.states }
+
     LaunchedEffect(settings.pending, now) {
         val pending = settings.pending ?: return@LaunchedEffect
         if (pending.isDue(now)) app.settings.applyDuePending(now)
@@ -87,6 +92,7 @@ private fun BlockerRoot(onRequestNotificationPermission: () -> Unit) {
             settings = settings,
             stats = stats,
             serviceEnabled = serviceEnabled,
+            feedStates = feedStates,
             now = now,
             onEnableService = { AccessibilityUtils.openAccessibilitySettings(context) },
             onRequestNotificationPermission = onRequestNotificationPermission,

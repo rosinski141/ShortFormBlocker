@@ -23,6 +23,8 @@ class Enforcer(
     private val onBlockStarted: (BlockRule, ScreenSnapshot) -> Unit,
     private val onRecheckNeeded: () -> Unit,
     private val blockCountProvider: () -> Int,
+    /** How long out of the app earns a fresh feed budget, for the block card to quote. */
+    private val feedResetMinutesProvider: () -> Int,
 ) {
 
     private val handler = Handler(Looper.getMainLooper())
@@ -76,7 +78,8 @@ class Enforcer(
         overlay.show(
             title = if (isFeed) rule.displayName + " closed" else rule.displayName + " blocked",
             subtitle = if (isFeed) {
-                "That is the feed for this visit. It opens again once you have been away a while."
+                "That is the feed for this visit. It opens again once you have left the feed " +
+                    "alone for ${feedResetMinutesProvider()} minutes."
             } else {
                 "Not today. Go do the thing you actually opened your phone for."
             },
