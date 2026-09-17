@@ -15,12 +15,16 @@ object SnapshotCollector {
     const val MAX_NODES = 500
     const val MAX_DEPTH = 28
 
+    /** How far up from an unlabelled selected node to look for its name. */
+    private const val MAX_LABEL_HOPS = 2
+
     fun collect(root: AccessibilityNodeInfo?): ScreenSnapshot? {
         val packageName = root?.packageName?.toString() ?: return null
 
         val viewIds = HashSet<String>()
         val visibleViewIds = HashSet<String>()
         val texts = HashSet<String>()
+        val visibleTexts = HashSet<String>()
         val contentDescriptions = HashSet<String>()
         val selectedLabels = HashSet<String>()
         val visibleSelectedLabels = HashSet<String>()
@@ -50,15 +54,17 @@ object SnapshotCollector {
             val text = node.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
             val description = node.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
             if (text != null) texts.add(text)
+            if (text != null && visible) visibleTexts.add(text)
             if (description != null) contentDescriptions.add(description)
             if (description != null && visible) visibleDescriptions.add(description)
             if (node.isSelected) {
-                text?.let { selectedLabels.add(it) }
-                description?.let { selectedLabels.add(it) }
-                if (visible) {
-                    text?.let { visibleSelectedLabels.add(it) }
-                    description?.let { visibleSelectedLabels.add(it) }
+                // A selected node with nothing on it asks its ancestors what it is: Instagram marks
+                // a bare icon as the selected tab and keeps the name - "Home" - on its parent.
+                val labels = listOfNotNull(text, description).ifEmpty {
+                    listOfNotNull(selectedLabelFromAncestors(node))
                 }
+                selectedLabels.addAll(labels)
+                if (visible) visibleSelectedLabels.addAll(labels)
             }
             if (isBrowser && urlBarText == null && viewId != null && BrowserUrlBars.isUrlBar(viewId)) {
                 urlBarText = text?.lowercase()
@@ -83,6 +89,7 @@ object SnapshotCollector {
             viewIds = viewIds,
             visibleViewIds = visibleViewIds,
             texts = texts,
+            visibleTexts = visibleTexts,
             contentDescriptions = contentDescriptions,
             selectedLabels = selectedLabels,
             visibleSelectedLabels = visibleSelectedLabels,
@@ -94,6 +101,26 @@ object SnapshotCollector {
     }
 
     private data class Node(val node: AccessibilityNodeInfo, val depth: Int)
+
+    /** The nearest thing an unlabelled selected node has to a name, a couple of levels up. */
+    private fun selectedLabelFromAncestors(node: AccessibilityNodeInfo): String? {
+        var current = node.parent
+        var hops = 0
+        while (current != null && hops < MAX_LABEL_HOPS) {
+            val label = current.contentDescription?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+                ?: current.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }
+            val parent = current.parent
+            current.recycleIfNeeded()
+            if (label != null) {
+                parent?.recycleIfNeeded()
+                return label
+            }
+            current = parent
+            hops++
+        }
+        current?.recycleIfNeeded()
+        return null
+    }
 
     /** `recycle()` is a no-op from API 33 onwards, but is still needed on older releases. */
     @Suppress("DEPRECATION")

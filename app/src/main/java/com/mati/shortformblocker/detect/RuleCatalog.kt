@@ -58,10 +58,13 @@ object RuleCatalog {
     val FACEBOOK_REELS = BlockRule(
         id = "facebook_reels",
         displayName = "Facebook Reels",
-        description = "Blocks the Reels tab in Facebook. The rest of the app keeps working.",
-        packages = setOf("com.facebook.katana", "com.facebook.lite"),
-        viewIdContains = listOf("reels_viewer", "reels_tab", "video_home_reels"),
-        selectedLabelContains = listOf("Reels"),
+        description = "Blocks the Reels tab and the full-screen reel player, wherever a reel is " +
+            "opened from. The feed, Marketplace and the rest of the app keep working.",
+        packages = FacebookSurfaces.PACKAGES,
+        // No view ids: Facebook strips its resource names, so every id it reports is
+        // `(name removed)`. Everything here is a label - see FacebookSurfaces.
+        visibleLabelContains = FacebookSurfaces.REELS_PLAYER_LABELS,
+        selectedLabelContains = listOf(FacebookSurfaces.REELS_TAB_LABEL),
     )
 
     val SNAPCHAT_SPOTLIGHT = BlockRule(
@@ -124,6 +127,38 @@ object RuleCatalog {
         enabledByDefault = false,
     )
 
+    /**
+     * The two endless feeds. These are not blocked for being what they are - that would take the
+     * app's messages and notifications with them - but for going on too long; see [FeedBudgetPolicy]
+     * for how the budget is spent and when it refills.
+     */
+    val FACEBOOK_FEED = BlockRule(
+        id = "facebook_feed",
+        displayName = "Facebook feed",
+        description = "Read the feed, but not endlessly: once the scroll budget for this visit is " +
+            "spent the feed closes until you have been out of Facebook for a while. Messages, " +
+            "notifications and everything else keep working.",
+        packages = FacebookSurfaces.PACKAGES,
+        mode = BlockMode.BUDGETED_FEED,
+        // Not visibleSignalsOnly, unlike the reels rules: Facebook hides the bottom nav the moment
+        // you scroll but leaves the Home tab *selected* in the tree, so the open tab is knowable
+        // exactly when the bar is not on screen. Which tab is open is not a claim about pixels.
+        selectedLabelContains = listOf(FacebookSurfaces.HOME_TAB_LABEL),
+    )
+
+    val INSTAGRAM_FEED = BlockRule(
+        id = "instagram_feed",
+        displayName = "Instagram feed",
+        description = "Read the feed, but not endlessly: once the scroll budget for this visit is " +
+            "spent the feed closes until you have been out of Instagram for a while. DMs keep " +
+            "working.",
+        packages = InstagramSurfaces.PACKAGES,
+        mode = BlockMode.BUDGETED_FEED,
+        selectedLabelContains = listOf(InstagramSurfaces.HOME_TAB_LABEL),
+    )
+
+    // Feed rules come last: on a screen that is somehow both, the short-form rule should win, and
+    // it is the one that blocks outright.
     val ALL: List<BlockRule> = listOf(
         YOUTUBE_SHORTS,
         INSTAGRAM_REELS,
@@ -134,6 +169,8 @@ object RuleCatalog {
         BROWSER_SOCIAL_SITES,
         REDDIT_VIDEO,
         X_VIDEO,
+        FACEBOOK_FEED,
+        INSTAGRAM_FEED,
     )
 
     /** Packages the accessibility service subscribes to - no other app is ever inspected. */

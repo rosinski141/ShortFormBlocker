@@ -31,6 +31,7 @@ import com.mati.shortformblocker.data.BlockStats
 import com.mati.shortformblocker.data.BlockerSettings
 import com.mati.shortformblocker.data.PendingDisable
 import com.mati.shortformblocker.detect.BlockRule
+import com.mati.shortformblocker.detect.FeedBudget
 import com.mati.shortformblocker.detect.RuleCatalog
 
 @Composable
@@ -44,7 +45,9 @@ fun HomeScreen(
     onOpenBatterySettings: () -> Unit,
     onSetProtection: (Boolean) -> Unit,
     onSetRule: (String, Boolean) -> Unit,
+    onSetFeedBudget: (FeedBudget) -> Unit,
     onCancelPending: () -> Unit,
+    onCancelPendingFeedBudget: () -> Unit,
     onOpenDebug: () -> Unit,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -96,6 +99,13 @@ fun HomeScreen(
                     onCancelPending = onCancelPending,
                 )
             }
+
+            FeedBudgetCard(
+                settings = settings,
+                now = now,
+                onSetFeedBudget = onSetFeedBudget,
+                onCancelPending = onCancelPendingFeedBudget,
+            )
 
             TextButton(onClick = onOpenDebug) {
                 Text("Debug: inspect the last screen")
@@ -208,6 +218,85 @@ private fun StatColumn(value: Int, label: String) {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+/**
+ * The one knob in the app. Tightening it - fewer screens, or a longer wait for a refill - takes
+ * effect as you tap; loosening it waits out the same cooldown as switching a rule off, because
+ * "just five more screens" at the moment the feed closes is exactly the decision this app exists to
+ * take away from you.
+ */
+@Composable
+private fun FeedBudgetCard(
+    settings: BlockerSettings,
+    now: Long,
+    onSetFeedBudget: (FeedBudget) -> Unit,
+    onCancelPending: () -> Unit,
+) {
+    val budget = settings.feedBudgetAt(now)
+    val pending = settings.pendingFeedBudget?.takeIf { !it.isDue(now) }
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = "Feed budget",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = "How much feed the Facebook and Instagram rules let past per visit, and " +
+                    "how long you have to stay out of the app before it refills.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Stepper(
+                label = "Screens per visit",
+                value = "${budget.screens}",
+                onLess = { onSetFeedBudget(budget.copy(screens = budget.screens - 1)) },
+                onMore = { onSetFeedBudget(budget.copy(screens = budget.screens + 1)) },
+            )
+            Stepper(
+                label = "Refills after",
+                value = "${budget.resetMinutes} min away",
+                onLess = { onSetFeedBudget(budget.copy(resetMinutes = budget.resetMinutes - 5)) },
+                onMore = { onSetFeedBudget(budget.copy(resetMinutes = budget.resetMinutes + 5)) },
+            )
+            if (pending != null) {
+                Text(
+                    text = "Waiting: ${pending.budget.screens} screens, refills after " +
+                        "${pending.budget.resetMinutes} min",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                CooldownNotice(
+                    remainingMillis = pending.remainingMillis(now),
+                    label = "More feed in",
+                    onCancelPending = onCancelPending,
+                    onPrimary = false,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Stepper(
+    label: String,
+    value: String,
+    onLess: () -> Unit,
+    onMore: () -> Unit,
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text = label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        OutlinedButton(onClick = onLess) { Text("-") }
+        Text(
+            text = value,
+            modifier = Modifier.padding(horizontal = 12.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        OutlinedButton(onClick = onMore) { Text("+") }
     }
 }
 

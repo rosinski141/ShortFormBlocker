@@ -18,6 +18,8 @@ data class ScreenSnapshot(
     val visibleViewIds: Set<String> = emptySet(),
     /** Visible text of every node walked. */
     val texts: Set<String> = emptySet(),
+    /** [texts] of nodes actually on screen. */
+    val visibleTexts: Set<String> = emptySet(),
     /** Content descriptions of every node walked. */
     val contentDescriptions: Set<String> = emptySet(),
     /**
@@ -51,6 +53,14 @@ data class ScreenSnapshot(
     fun hasVisibleSelectedLabel(label: String): Boolean =
         visibleSelectedLabels.any { it.contains(label, ignoreCase = true) }
 
+    /**
+     * Content description or text of any node on screen. The signal of last resort, for apps that
+     * report no usable view ids and do not mark the open tab as selected - see [FacebookSurfaces].
+     */
+    fun hasVisibleLabel(fragment: String): Boolean =
+        visibleContentDescriptions.any { it.contains(fragment, ignoreCase = true) } ||
+            visibleTexts.any { it.contains(fragment, ignoreCase = true) }
+
     fun urlContains(fragment: String): Boolean =
         urlBarText?.contains(fragment, ignoreCase = true) == true
 
@@ -67,6 +77,7 @@ data class ScreenSnapshot(
         appendSection("selected labels", selectedLabels)
         appendSection("visible selected labels", visibleSelectedLabels)
         appendSection("visible content descriptions", visibleContentDescriptions)
+        appendSection("visible texts", visibleTexts)
         appendSection("visible view ids", visibleViewIds)
         appendSection("view ids", viewIds)
         appendSection("content descriptions", contentDescriptions)

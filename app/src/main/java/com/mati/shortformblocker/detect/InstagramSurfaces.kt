@@ -17,6 +17,9 @@ object InstagramSurfaces {
 
     private const val REEL_BY_PREFIX = "reel by "
 
+    /** The bottom-nav Home button, as the open tab reports it - what identifies the home feed. */
+    const val HOME_TAB_LABEL = "Home"
+
     /** The bottom-nav Reels button. Present whenever the main tab host is on screen. */
     private const val CLIPS_TAB_ID = "clips_tab"
 

@@ -1,5 +1,6 @@
 package com.mati.shortformblocker.data
 
+import com.mati.shortformblocker.detect.FeedBudget
 import com.mati.shortformblocker.detect.RuleCatalog
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -62,5 +63,44 @@ class SettingsCooldownTest {
         assertEquals(counts, StatsRepository.parseCounts(StatsRepository.formatCounts(counts)))
         assertEquals(emptyMap<String, Int>(), StatsRepository.parseCounts(null))
         assertEquals(emptyMap<String, Int>(), StatsRepository.parseCounts("garbage"))
+    }
+
+    // ---- Feed budget --------------------------------------------------------------------------
+
+    @Test
+    fun `a looser feed budget only counts once its cooldown expires`() {
+        val settings = BlockerSettings(
+            feedBudget = FeedBudget(screens = 12, resetMinutes = 15),
+            pendingFeedBudget = PendingFeedBudget(
+                budget = FeedBudget(screens = 40, resetMinutes = 15),
+                requestedAt = now,
+                effectiveAt = now + twoHours,
+            ),
+        )
+        assertEquals(12, settings.feedBudgetAt(now).screens)
+        assertEquals(12, settings.feedBudgetAt(now + twoHours - 1).screens)
+        assertEquals(40, settings.feedBudgetAt(now + twoHours).screens)
+    }
+
+    @Test
+    fun `more screens or a faster refill both count as looser`() {
+        val budget = FeedBudget(screens = 12, resetMinutes = 15)
+        assertTrue(budget.copy(screens = 13).isLooserThan(budget))
+        assertTrue(budget.copy(resetMinutes = 5).isLooserThan(budget))
+        assertFalse(budget.copy(screens = 11).isLooserThan(budget))
+        assertFalse(budget.copy(resetMinutes = 30).isLooserThan(budget))
+        assertFalse(budget.isLooserThan(budget))
+    }
+
+    @Test
+    fun `a feed budget is kept inside its limits`() {
+        assertEquals(
+            FeedBudget.MIN_FEED_SCREENS,
+            FeedBudget(screens = 0, resetMinutes = 15).coerced().screens,
+        )
+        assertEquals(
+            FeedBudget.MAX_FEED_RESET_MINUTES,
+            FeedBudget(screens = 5, resetMinutes = 99_999).coerced().resetMinutes,
+        )
     }
 }

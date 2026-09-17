@@ -47,6 +47,7 @@ fun DebugScreen(now: Long, stats: BlockStats, onBack: () -> Unit) {
     // `now` ticks every second, so reading the holder here keeps the dump fresh.
     val snapshot = remember(now) { SnapshotHolder.last }
     val matchedRuleId = remember(now) { SnapshotHolder.lastMatchedRuleId }
+    val policyNote = remember(now) { SnapshotHolder.lastPolicyNote }
     val capturedAt = remember(now) { SnapshotHolder.lastCapturedAt }
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -138,6 +139,14 @@ fun DebugScreen(now: Long, stats: BlockStats, onBack: () -> Unit) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.primary,
                 )
+                if (policyNote != null) {
+                    Text(
+                        text = policyNote,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 OutlinedButton(onClick = { copyToClipboard(context, snapshot.describe()) }) {
                     Text("Copy dump")
                 }

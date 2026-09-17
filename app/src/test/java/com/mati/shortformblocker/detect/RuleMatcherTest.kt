@@ -95,7 +95,7 @@ class RuleMatcherTest {
      * altogether - the bug this test exists to keep fixed.
      */
     @Test
-    fun `instagram home feed does not match although the reels pager is attached off screen`() {
+    fun `instagram home feed is the budgeted feed although the reels pager is attached off screen`() {
         val snapshot = ScreenSnapshot(
             packageName = "com.instagram.android",
             viewIds = setOf(
@@ -115,11 +115,13 @@ class RuleMatcherTest {
             selectedLabels = setOf("Home", "Reels"),
             visibleSelectedLabels = setOf("Home"),
         )
-        assertNull(RuleMatcher.match(snapshot, allRules))
+        // The home feed belongs to the budgeted feed rule, which waits for the scroll budget to run
+        // out. The reels rule firing here is the bug, and it stays fixed.
+        assertEquals(RuleCatalog.INSTAGRAM_FEED, RuleMatcher.match(snapshot, allRules))
     }
 
     @Test
-    fun `instagram feed does not match although the Reels tab button is on screen`() {
+    fun `instagram feed is the budgeted feed although the Reels tab button is on screen`() {
         val snapshot = ScreenSnapshot(
             packageName = "com.instagram.android",
             viewIds = setOf("com.instagram.android:id/feed_container", "com.instagram.android:id/tab_bar"),
@@ -131,7 +133,7 @@ class RuleMatcherTest {
             selectedLabels = setOf("Home"),
             visibleSelectedLabels = setOf("Home"),
         )
-        assertNull(RuleMatcher.match(snapshot, allRules))
+        assertEquals(RuleCatalog.INSTAGRAM_FEED, RuleMatcher.match(snapshot, allRules))
     }
 
     @Test
@@ -237,6 +239,7 @@ class RuleMatcherTest {
         RuleCatalog.ALL.forEach { rule ->
             val hasSignal = rule.viewIdContains.isNotEmpty() ||
                 rule.selectedLabelContains.isNotEmpty() ||
+                rule.visibleLabelContains.isNotEmpty() ||
                 rule.urlContains.isNotEmpty() ||
                 rule.urlHostEquals.isNotEmpty()
             assertTrue(

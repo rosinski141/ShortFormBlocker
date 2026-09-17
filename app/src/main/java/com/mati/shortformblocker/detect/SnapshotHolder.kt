@@ -20,15 +20,25 @@ object SnapshotHolder {
     var lastCapturedAt: Long = 0L
         private set
 
-    fun record(snapshot: ScreenSnapshot, matchedRuleId: String?) {
+    /**
+     * What the stateful policies made of this screen. The snapshot alone cannot explain a feed
+     * block - the budget is spent over a whole visit - so the debug screen shows this line too.
+     */
+    @Volatile
+    var lastPolicyNote: String? = null
+        private set
+
+    fun record(snapshot: ScreenSnapshot, matchedRuleId: String?, policyNote: String? = null) {
         last = snapshot
         lastMatchedRuleId = matchedRuleId
+        lastPolicyNote = policyNote
         lastCapturedAt = System.currentTimeMillis()
     }
 
     fun clear() {
         last = null
         lastMatchedRuleId = null
+        lastPolicyNote = null
         lastCapturedAt = 0L
     }
 }

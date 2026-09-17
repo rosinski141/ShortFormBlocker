@@ -7,7 +7,9 @@ import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.mati.shortformblocker.BlockerApp
 import com.mati.shortformblocker.data.BlockerSettings
+import com.mati.shortformblocker.detect.BlockMode
 import com.mati.shortformblocker.detect.BlockRule
+import com.mati.shortformblocker.detect.FeedBudgetPolicy
 import com.mati.shortformblocker.detect.InstagramSurfaces
 import com.mati.shortformblocker.detect.ReelAllowancePolicy
 import com.mati.shortformblocker.detect.RuleCatalog
@@ -52,11 +54,20 @@ class BlockerAccessibilityService : AccessibilityService() {
     /** Lets a reel a friend sent you play, while still blocking the feed behind it. */
     private val reelPolicy = ReelAllowancePolicy()
 
+    /** Closes the home feeds once a visit has scrolled through its budget. */
+    private lateinit var feedPolicy: FeedBudgetPolicy
+
+    /** Screen height in pixels, which is the unit the feed budget is counted in. */
+    private var screenHeightPx = 0
+
     /** Where the blocked screen was reached from, recorded with the evidence (view ids only). */
     private var previousScreen: ScreenSnapshot? = null
     private var evaluations = 0
     private var clearedScreens = 0
     private var eventsReceived = 0
+    private var scrollEvents = 0
+    private var reportedScrolls = 0
+    private var unreportedScrolls = 0
     private var nullRoots = 0
     private var connectedAt = 0L
 
@@ -65,6 +76,11 @@ class BlockerAccessibilityService : AccessibilityService() {
         instance = this
         connectedAt = SystemClock.uptimeMillis()
         scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+        screenHeightPx = resources.displayMetrics.heightPixels
+        feedPolicy = FeedBudgetPolicy(
+            screenHeightPx = screenHeightPx,
+            budget = { settings.feedBudgetAt(System.currentTimeMillis()) },
+        )
         overlay = BlockOverlay(this)
         enforcer = Enforcer(
             service = this,
@@ -102,12 +118,34 @@ class BlockerAccessibilityService : AccessibilityService() {
         evaluate()
     }
 
-    /** A scroll in the reels pager means the next reel, which is not the one a friend sent. */
+    /**
+     * Scrolling means two things here: in the reels pager it is the next reel, which is not the one
+     * a friend sent, and in a home feed it is budget being spent.
+     */
     private fun handleScroll(event: AccessibilityEvent) {
-        if (event.packageName?.toString() != InstagramSurfaces.PACKAGE) return
+        val packageName = event.packageName?.toString() ?: return
+        scrollEvents++
+        feedPolicy.onScroll(packageName, scrollDistancePx(event))
+        if (packageName != InstagramSurfaces.PACKAGE) return
         val source = event.source
         val sourceId = source?.viewIdResourceName
         if (InstagramSurfaces.isClipsScrollSource(sourceId)) reelPolicy.onClipsScroll()
+    }
+
+    /**
+     * How far this scroll moved the list. Not every view reports a delta - Facebook's feed only
+     * sometimes does - and counting an unreported scroll as nothing would make the budget
+     * unspendable, so it falls back to a conservative fraction of a screen. The cap keeps a single
+     * absurd event from swallowing the whole budget.
+     */
+    private fun scrollDistancePx(event: AccessibilityEvent): Int {
+        val delta = kotlin.math.abs(event.scrollDeltaY)
+        if (delta < MIN_REPORTED_SCROLL_PX) {
+            unreportedScrolls++
+            return screenHeightPx / UNREPORTED_SCROLL_DIVISOR
+        }
+        reportedScrolls++
+        return delta.coerceAtMost(screenHeightPx * MAX_SCREENS_PER_SCROLL)
     }
 
     override fun onInterrupt() = Unit
@@ -146,9 +184,25 @@ class BlockerAccessibilityService : AccessibilityService() {
         val match: BlockRule? = RuleMatcher.match(snapshot, rules)
         val isReelScreen = match?.id == RuleCatalog.INSTAGRAM_REELS.id
         val allowedByPass = reelPolicy.onSnapshot(snapshot, isReelScreen)
-        val effectiveMatch = if (isReelScreen && allowedByPass) null else match
+        val isFeedScreen = match?.mode == BlockMode.BUDGETED_FEED
+        val feedOverBudget = feedPolicy.onSnapshot(snapshot, isFeedScreen)
+        val effectiveMatch = when {
+            isReelScreen && allowedByPass -> null
+            isFeedScreen -> match.takeIf { feedOverBudget }
+            match != null -> match
+            // The feed rule did not fire for this screen - Facebook hides its tab bar mid-fling -
+            // but the policy still places us in a feed that is out of budget.
+            feedOverBudget -> rules.feedRuleFor(snapshot.packageName)
+            else -> null
+        }
 
-        SnapshotHolder.record(snapshot, effectiveMatch?.id)
+        SnapshotHolder.record(
+            snapshot = snapshot,
+            matchedRuleId = effectiveMatch?.id,
+            policyNote = "rule on screen: ${match?.id ?: "none"}, scrolls: $scrollEvents " +
+                "($reportedScrolls measured, $unreportedScrolls estimated), " +
+                "feed budget: ${feedPolicy.describe(snapshot.packageName)}",
+        )
         if (effectiveMatch == null) {
             previousScreen = snapshot
             clearedScreens++
@@ -171,6 +225,7 @@ class BlockerAccessibilityService : AccessibilityService() {
         val evidence = buildString {
             appendLine("rule: ${rule.id}")
             appendLine("reel pass: ${reelPolicy.describe()}")
+            appendLine("feed budget: ${feedPolicy.describe(snapshot.packageName)}")
             appendLine("screens evaluated: $evaluations, of which not blocked: $clearedScreens")
             appendLine(
                 "events: $eventsReceived, empty windows: $nullRoots, " +
@@ -203,16 +258,30 @@ class BlockerAccessibilityService : AccessibilityService() {
         if (instance === this) instance = null
         if (::enforcer.isInitialized) enforcer.shutdown()
         reelPolicy.reset()
+        if (::feedPolicy.isInitialized) feedPolicy.reset()
         // The last snapshot is deliberately kept: OEM builds rebind this service constantly, and
         // wiping it here is what made the debug screen useless exactly when it was needed.
         scope.cancel()
     }
+
+    /** The budgeted-feed rule for this app, if one is enabled. */
+    private fun List<BlockRule>.feedRuleFor(packageName: String): BlockRule? =
+        firstOrNull { it.mode == BlockMode.BUDGETED_FEED && packageName in it.packages }
 
     companion object {
         const val TAG = "ShortFormBlocker"
 
         private const val MIN_EVALUATION_INTERVAL_MS = 150L
         private const val NOTIFICATION_TIMEOUT_MS = 100L
+
+        /** Below this, treat the event as reporting no distance at all rather than a 1px scroll. */
+        private const val MIN_REPORTED_SCROLL_PX = 2
+
+        /** What a scroll that reports no distance is worth: half a screen. */
+        private const val UNREPORTED_SCROLL_DIVISOR = 2
+
+        /** Ceiling on a single scroll event, in screens. */
+        private const val MAX_SCREENS_PER_SCROLL = 3
 
         @Volatile
         var instance: BlockerAccessibilityService? = null

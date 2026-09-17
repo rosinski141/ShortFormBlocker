@@ -112,7 +112,11 @@ private fun BlockerRoot(onRequestNotificationPermission: () -> Unit) {
                     if (enabled) app.settings.enable(ruleId) else app.settings.requestDisable(ruleId)
                 }
             },
+            onSetFeedBudget = { budget -> scope.launch { app.settings.setFeedBudget(budget) } },
             onCancelPending = { scope.launch { app.settings.cancelPending() } },
+            onCancelPendingFeedBudget = {
+                scope.launch { app.settings.cancelPendingFeedBudget() }
+            },
             onOpenDebug = { screen = Screen.DEBUG },
         )
 

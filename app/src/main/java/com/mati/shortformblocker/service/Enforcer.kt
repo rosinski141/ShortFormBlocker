@@ -4,6 +4,7 @@ import android.accessibilityservice.AccessibilityService
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import com.mati.shortformblocker.detect.BlockMode
 import com.mati.shortformblocker.detect.BlockRule
 import com.mati.shortformblocker.detect.ScreenSnapshot
 
@@ -71,9 +72,14 @@ class Enforcer(
         lastCountedAt = now
         lastActionAt = now
 
+        val isFeed = rule.mode == BlockMode.BUDGETED_FEED
         overlay.show(
-            title = rule.displayName + " blocked",
-            subtitle = "Not today. Go do the thing you actually opened your phone for.",
+            title = if (isFeed) rule.displayName + " closed" else rule.displayName + " blocked",
+            subtitle = if (isFeed) {
+                "That is the feed for this visit. It opens again once you have been away a while."
+            } else {
+                "Not today. Go do the thing you actually opened your phone for."
+            },
             footer = blockCountProvider().let { count ->
                 if (count <= 0) "Blocked by ShortFormBlocker" else "$count blocks today"
             },
@@ -84,9 +90,10 @@ class Enforcer(
             service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
         } else {
             backAttempts = 0
-            if (!InAppHome.goToAppHome(service, snapshot.packageName)) {
-                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-            }
+            // Dropping someone on the app's Home tab is the kind thing to do for a reels block -
+            // but for a feed block that tab *is* the feed, so the only way out is out of the app.
+            val stayedInApp = !isFeed && InAppHome.goToAppHome(service, snapshot.packageName)
+            if (!stayedInApp) service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
         }
 
         handler.removeCallbacks(recheck)

@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.mati.shortformblocker.detect.FeedBudget
 import com.mati.shortformblocker.detect.RuleCatalog
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -79,6 +80,47 @@ class SettingsRepository(private val context: Context) {
             prefs[KEY_INITIALIZED] = true
             prefs.clearPending()
         }
+        applyDueFeedBudget(now)
+    }
+
+    /** The feed-budget twin of [applyDuePending]: a loosening that has served its cooldown lands. */
+    private suspend fun applyDueFeedBudget(now: Long) {
+        context.blockerDataStore.edit { prefs ->
+            val effectiveAt = prefs[KEY_PENDING_FEED_EFFECTIVE_AT] ?: return@edit
+            if (now < effectiveAt) return@edit
+            prefs[KEY_FEED_SCREENS] = prefs[KEY_PENDING_FEED_SCREENS] ?: return@edit
+            prefs[KEY_FEED_RESET_MINUTES] = prefs[KEY_PENDING_FEED_RESET_MINUTES] ?: return@edit
+            prefs.clearPendingFeedBudget()
+        }
+    }
+
+    /**
+     * Tightening the feed budget - fewer screens, or a longer wait before it refills - applies at
+     * once. Loosening it is a disable by another name, so it waits out the same cooldown, and the
+     * budget in force until then is the old one.
+     */
+    suspend fun setFeedBudget(requested: FeedBudget, now: Long = System.currentTimeMillis()) {
+        val budget = requested.coerced()
+        context.blockerDataStore.edit { prefs ->
+            val current = prefs.feedBudget()
+            if (budget.isLooserThan(current)) {
+                val cooldown = prefs[KEY_COOLDOWN_MINUTES] ?: BlockerSettings.DEFAULT_COOLDOWN_MINUTES
+                prefs[KEY_PENDING_FEED_SCREENS] = budget.screens
+                prefs[KEY_PENDING_FEED_RESET_MINUTES] = budget.resetMinutes
+                prefs[KEY_PENDING_FEED_REQUESTED_AT] = now
+                prefs[KEY_PENDING_FEED_EFFECTIVE_AT] = now + TimeUnit.MINUTES.toMillis(cooldown.toLong())
+            } else {
+                prefs[KEY_FEED_SCREENS] = budget.screens
+                prefs[KEY_FEED_RESET_MINUTES] = budget.resetMinutes
+                prefs.clearPendingFeedBudget()
+            }
+            prefs[KEY_INITIALIZED] = true
+        }
+    }
+
+    /** Drops a loosening that has not landed yet, the way cancelling a pending disable does. */
+    suspend fun cancelPendingFeedBudget() {
+        context.blockerDataStore.edit { it.clearPendingFeedBudget() }
     }
 
     /** The cooldown can only be made longer - shortening it would defeat the point. */
@@ -95,6 +137,18 @@ class SettingsRepository(private val context: Context) {
         } else {
             RuleCatalog.DEFAULT_DISABLED_IDS
         }
+
+    private fun Preferences.feedBudget(): FeedBudget = FeedBudget(
+        screens = this[KEY_FEED_SCREENS] ?: FeedBudget.DEFAULT_FEED_SCREENS,
+        resetMinutes = this[KEY_FEED_RESET_MINUTES] ?: FeedBudget.DEFAULT_FEED_RESET_MINUTES,
+    )
+
+    private fun androidx.datastore.preferences.core.MutablePreferences.clearPendingFeedBudget() {
+        remove(KEY_PENDING_FEED_SCREENS)
+        remove(KEY_PENDING_FEED_RESET_MINUTES)
+        remove(KEY_PENDING_FEED_REQUESTED_AT)
+        remove(KEY_PENDING_FEED_EFFECTIVE_AT)
+    }
 
     private fun androidx.datastore.preferences.core.MutablePreferences.clearPending() {
         remove(KEY_PENDING_TARGET)
@@ -118,6 +172,19 @@ class SettingsRepository(private val context: Context) {
                 null
             },
             cooldownMinutes = this[KEY_COOLDOWN_MINUTES] ?: BlockerSettings.DEFAULT_COOLDOWN_MINUTES,
+            feedBudget = feedBudget(),
+            pendingFeedBudget = pendingFeedBudget(),
+        )
+    }
+
+    private fun Preferences.pendingFeedBudget(): PendingFeedBudget? {
+        val screens = this[KEY_PENDING_FEED_SCREENS] ?: return null
+        val resetMinutes = this[KEY_PENDING_FEED_RESET_MINUTES] ?: return null
+        val effectiveAt = this[KEY_PENDING_FEED_EFFECTIVE_AT] ?: return null
+        return PendingFeedBudget(
+            budget = FeedBudget(screens, resetMinutes),
+            requestedAt = this[KEY_PENDING_FEED_REQUESTED_AT] ?: effectiveAt,
+            effectiveAt = effectiveAt,
         )
     }
 
@@ -130,6 +197,15 @@ class SettingsRepository(private val context: Context) {
         private val KEY_PENDING_REQUESTED_AT = longPreferencesKey("pending_requested_at")
         private val KEY_PENDING_EFFECTIVE_AT = longPreferencesKey("pending_effective_at")
         private val KEY_COOLDOWN_MINUTES = intPreferencesKey("cooldown_minutes")
+        private val KEY_FEED_SCREENS = intPreferencesKey("feed_budget_screens")
+        private val KEY_FEED_RESET_MINUTES = intPreferencesKey("feed_budget_reset_minutes")
+        private val KEY_PENDING_FEED_SCREENS = intPreferencesKey("pending_feed_budget_screens")
+        private val KEY_PENDING_FEED_RESET_MINUTES =
+            intPreferencesKey("pending_feed_budget_reset_minutes")
+        private val KEY_PENDING_FEED_REQUESTED_AT =
+            longPreferencesKey("pending_feed_budget_requested_at")
+        private val KEY_PENDING_FEED_EFFECTIVE_AT =
+            longPreferencesKey("pending_feed_budget_effective_at")
         private val KEY_INITIALIZED = booleanPreferencesKey("initialized")
     }
 }

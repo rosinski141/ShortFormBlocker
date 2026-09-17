@@ -37,12 +37,43 @@ Two details that decide whether this app is usable:
   the reel in front of you is no longer the one the pass was granted for, blocking resumes. Go back
   to the conversation and open another reel and you get a fresh pass, so there is no cap on reels
   friends actually send, only on the feed behind them. The Reels tab never earns a pass.
+- **Facebook has no view ids at all.** It ships with its resource names stripped, so every id it
+  reports is the literal string `(name removed)`, and its full-screen reel player - what you get
+  opening a reel from the feed, a profile, a share or a notification - marks nothing as selected
+  either. That surface is matched on the labels Facebook puts on the player itself
+  ([`FacebookSurfaces.kt`](app/src/main/java/com/mati/shortformblocker/detect/FacebookSurfaces.kt)),
+  never on the bare `Reel` label of a video playing inline in the home feed.
 - **The player, not the shelf.** The Shorts shelf on the YouTube home feed is deliberately not a
   signal; matching it would bounce you out of the home feed itself.
 - **On screen, not merely present.** Instagram's home feed and Reels are two pages of one swipeable
   pager, so the home feed's node tree carries every `clips_*` id and even reports Reels as selected.
   The Instagram rule therefore matches visible nodes only (`visibleSignalsOnly`). Without it the rule
   fired on the home feed, and the second Back press of the escalation exited Instagram entirely.
+
+## The home feeds get a budget, not a block
+
+Facebook's and Instagram's home feeds are the other endless thing on the phone, but they cannot be
+blocked the way a Reels tab can: the feed is the front door of the app, and closing it takes your
+messages, events and notifications with it. So those two rules are **budgeted**
+([`FeedBudgetPolicy.kt`](app/src/main/java/com/mati/shortformblocker/detect/FeedBudgetPolicy.kt)):
+you get about a dozen screens of feed per visit, measured in real pixels from the scroll events, and
+when it runs out the feed closes until you have been out of the app for fifteen minutes. Both
+numbers are in the app, under **Feed budget** - tightening them applies as you tap, loosening them
+waits out the same cooldown as switching a rule off.
+
+Three details, each of them something the phone taught us rather than the other way round:
+
+- **Blocking follows the scroll, not the state.** An overspent feed you open, glance at and leave is
+  never blocked, so the app still works for the message you came for. Scroll it again and it closes
+  again at once - there is no fresh budget, only a fresh refusal. The first version blocked on
+  arrival and threw you out of Instagram the moment you opened it.
+- **A scrolled feed does not look like a feed.** Facebook hides its bottom nav as soon as you scroll
+  and leaves it hidden, so nothing *visible* says "this is the feed" - the Home tab is still in the
+  tree and still selected, just off screen. The feed rules therefore read the open tab from the whole
+  tree, and the policy latches the feed until a screen turns up that is clearly somewhere else.
+- **A selected tab may not carry its own name.** Instagram marks a bare icon node as selected and
+  keeps the word "Home" on its parent, so a selected node with no label asks its ancestors what it
+  is.
 
 The block card is a `TYPE_ACCESSIBILITY_OVERLAY` window rather than an Activity, which needs no
 overlay permission and is not subject to background-activity-launch restrictions. It swallows
@@ -77,7 +108,7 @@ Needs JDK 17+ and the Android SDK (platform 37). No Android Studio required; the
 downloads everything else.
 
 ```bash
-./gradlew :app:testDebugUnitTest      # 53 detection, DM-pass and cooldown tests, no device
+./gradlew :app:testDebugUnitTest      # 79 detection, feed-budget, DM-pass and cooldown tests, no device
 ./gradlew :app:assembleDebug
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell am start -n com.mati.shortformblocker/.ui.MainActivity

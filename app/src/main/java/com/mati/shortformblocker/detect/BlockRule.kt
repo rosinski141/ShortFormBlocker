@@ -6,6 +6,14 @@ enum class BlockMode {
 
     /** Only some surfaces are short form; a signal must be present on screen. */
     SIGNAL,
+
+    /**
+     * A feed that is fine in small doses and endless by design - the home feed of a social app.
+     * The signals identify the surface as usual, but a match is only enforced once the scroll
+     * budget for this visit has been spent; [com.mati.shortformblocker.detect.FeedBudgetPolicy]
+     * owns that decision.
+     */
+    BUDGETED_FEED,
 }
 
 /**
@@ -23,6 +31,17 @@ data class BlockRule(
     val viewIdContains: List<String> = emptyList(),
     /** Substrings matched against labels of *selected* nodes only, i.e. the open tab. */
     val selectedLabelContains: List<String> = emptyList(),
+    /**
+     * Substrings matched against the labels - content descriptions and text - of nodes that are
+     * actually on screen. The signal of last resort, for a surface that offers nothing better:
+     * Facebook ships with its resource names stripped, so every id it reports is literally
+     * `com.facebook.katana:id/(name removed)`, and its full-screen reel player marks no node as
+     * selected either. See [FacebookSurfaces] for what is safe to match there.
+     *
+     * Only ever matched against visible nodes: a label is a much weaker signal than a view id, so
+     * an off-screen one is not worth acting on.
+     */
+    val visibleLabelContains: List<String> = emptyList(),
     /** Substrings matched against the browser address bar, for blocking part of a site. */
     val urlContains: List<String> = emptyList(),
     /**
@@ -48,6 +67,7 @@ data class BlockRule(
         else snapshot::hasSelectedLabel
         return viewIdContains.any(hasViewId) ||
             selectedLabelContains.any(hasSelectedLabel) ||
+            visibleLabelContains.any(snapshot::hasVisibleLabel) ||
             urlContains.any(snapshot::urlContains) ||
             urlHostEquals.any(snapshot::isOnSite)
     }

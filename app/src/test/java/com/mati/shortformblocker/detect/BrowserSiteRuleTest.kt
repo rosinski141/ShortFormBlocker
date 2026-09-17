@@ -2,6 +2,7 @@ package com.mati.shortformblocker.detect
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -116,6 +117,10 @@ class BrowserSiteRuleTest {
             viewIds = setOf("com.instagram.android:id/feed_container"),
             selectedLabels = setOf("Home"),
         )
-        assertNull(RuleMatcher.match(instagramApp, rules))
+        // The in-app feed rule may well claim this screen - what must never happen is a browser
+        // rule reaching into the app and blocking Instagram outright for being instagram.com.
+        val match = RuleMatcher.match(instagramApp, rules)
+        assertNotEquals(RuleCatalog.BROWSER_SOCIAL_SITES, match)
+        assertNotEquals(RuleCatalog.BROWSER_SHORT_FORM, match)
     }
 }

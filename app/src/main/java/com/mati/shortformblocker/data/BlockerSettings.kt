@@ -1,6 +1,7 @@
 package com.mati.shortformblocker.data
 
 import com.mati.shortformblocker.detect.BlockRule
+import com.mati.shortformblocker.detect.FeedBudget
 import com.mati.shortformblocker.detect.RuleCatalog
 
 /** A disable request that has been made but has not served its cooldown yet. */
@@ -19,6 +20,17 @@ data class PendingDisable(
     }
 }
 
+/** A feed budget change that loosens the rules, waiting out its cooldown before it counts. */
+data class PendingFeedBudget(
+    val budget: FeedBudget,
+    val requestedAt: Long,
+    val effectiveAt: Long,
+) {
+    fun isDue(now: Long): Boolean = now >= effectiveAt
+
+    fun remainingMillis(now: Long): Long = (effectiveAt - now).coerceAtLeast(0L)
+}
+
 /**
  * Settings as stored, plus the rules about *when* a stored value takes effect.
  *
@@ -32,7 +44,13 @@ data class BlockerSettings(
     val disabledRuleIds: Set<String> = RuleCatalog.DEFAULT_DISABLED_IDS,
     val pending: PendingDisable? = null,
     val cooldownMinutes: Int = DEFAULT_COOLDOWN_MINUTES,
+    val feedBudget: FeedBudget = FeedBudget(),
+    val pendingFeedBudget: PendingFeedBudget? = null,
 ) {
+    /** The budget in force right now: a looser one only counts once its cooldown has expired. */
+    fun feedBudgetAt(now: Long): FeedBudget =
+        pendingFeedBudget?.takeIf { it.isDue(now) }?.budget ?: feedBudget
+
     fun isProtectionOn(now: Long): Boolean {
         if (!protectionEnabled) return false
         val pendingAll = pending?.takeIf { it.target == PendingDisable.TARGET_ALL } ?: return true
