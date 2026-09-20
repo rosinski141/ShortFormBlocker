@@ -141,15 +141,22 @@ class BlockerAccessibilityService : AccessibilityService() {
      * sometimes does - and counting an unreported scroll as nothing would make the budget
      * unspendable, so it falls back to a conservative fraction of a screen. The cap keeps a single
      * absurd event from swallowing the whole budget.
+     *
+     * A scroll that only moved sideways - a stories tray, a photo carousel inside a post - reports
+     * no vertical delta on purpose, not because the view failed to report one. That must not fall
+     * into the "unreported" fallback, or every side-swipe would spend budget as if it were half a
+     * screen of feed.
      */
     private fun scrollDistancePx(event: AccessibilityEvent): Int {
-        val delta = kotlin.math.abs(event.scrollDeltaY)
-        if (delta < MIN_REPORTED_SCROLL_PX) {
+        val deltaY = kotlin.math.abs(event.scrollDeltaY)
+        val deltaX = kotlin.math.abs(event.scrollDeltaX)
+        if (deltaY < MIN_REPORTED_SCROLL_PX) {
+            if (deltaX >= MIN_REPORTED_SCROLL_PX) return 0
             unreportedScrolls++
             return screenHeightPx / UNREPORTED_SCROLL_DIVISOR
         }
         reportedScrolls++
-        return delta.coerceAtMost(screenHeightPx * MAX_SCREENS_PER_SCROLL)
+        return deltaY.coerceAtMost(screenHeightPx * MAX_SCREENS_PER_SCROLL)
     }
 
     override fun onInterrupt() = Unit
